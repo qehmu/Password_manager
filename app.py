@@ -134,7 +134,7 @@ async def clear_enter_pass(message: Message, state: FSMContext):
 @dp.message(Command("set_enter_pass"))
 async def command_set_enter_pass(message: Message, state: FSMContext):
     await message.answer(
-        "Для установления нового пароля необходимо его ввести. Помните, что паролю лучше быть длинным и сложным.Читать про сложность паролей: /recommend")
+        "Для установления нового пароля необходимо его ввести. Помните, что паролю лучше быть длинным и сложным. Читать про сложность паролей: /recommend")
     await state.set_state(Password.set_enter_pass_2)
 
 # Обработчик сообщений с команды /set_enter_pass
@@ -148,12 +148,11 @@ async def set_enter_pass_2(message: Message, state: FSMContext):
             "\nhttps://www.kaspersky.ru/resource-center/threats/how-to-create-a-strong-password"
             "\nhttps://nabiraem.ru/blog/articles/advices/kak-pravilno-podobrat-parol--29"
             "\nhttps://habr.com/ru/companies/ua-hosting/articles/273373/")
-
     await message.delete()
-    await message.answer("Хорошо, сохраняю ваш пароль...", reply_markup=clear_kb)
-    cursor.execute('INSERT INTO users (id) (password_enter) VALUES (?)', (user_id, enter_pass))
-    conn.commit()
+    await message.answer("Ваш пароль для списка изменен.", reply_markup=clear_kb)
     await state.clear()
+    cursor.execute(f'UPDATE users SET password_enter = ? WHERE id = ?', (enter_pass, user_id))
+    conn.commit()
 
 # Команда /add
 @dp.message(Command("add"))
@@ -174,10 +173,9 @@ async def add_pass(message: Message, state: FSMContext):
     if row is None:
         cursor.execute('INSERT INTO users (password_1) VALUES (?)', (message.text,))
     else:
-        cursor.execute(
-            'SELECT password_5 FROM users WHERE id = ?', (user_id,))
-        result_check = cursor.fetchone()[0]
-        if result_check != '':
+        cursor.execute('SELECT password_5 FROM users WHERE id = ?', (user_id,))
+        result_verify_pass = cursor.fetchone()
+        if result_verify_pass is not None and result_verify_pass[0] is not None and result_verify_pass[0] != 'null':
             await message.answer(
                 "Предупреждение! Превышен лимит 5 хранимых паролей. Все далее добавленные пароли будут перезаписываться в пароль с номером 5.")
         for i in range(1, 6):
