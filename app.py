@@ -77,7 +77,7 @@ async def command_start_handler(message: Message, state: FSMContext):
         await message.answer("Перед началом пользования, задайте любой пароль, введя его сюда.")
     elif result_2 is not None:
         await message.answer(
-            "У вас уже установлен пароль, поэтому предлагаю ознакомиться с моими командами:\n1. /generate_pass - Сгенерировать пароль\n2. /add - Добавить пароль в список\n3. /delete - Удалить пароль из списка\n4. /set_enter_pass - Установить новый пароль для списка паролей\n5. /check_passwords - Посмотреть список паролей\n6. /recommend - Показать рекомендации к обороту данных и паролей\n7. /help - Показать возможности бота")
+            "У вас уже установлен мастер-пароль, поэтому предлагаю ознакомиться с моими командами:\n1. /generate_pass - Сгенерировать пароль\n2. /add - Добавить пароль в список\n3. /delete - Удалить пароль из списка\n4. /set_enter_pass - Установить новый пароль для списка паролей\n5. /check_passwords - Посмотреть список паролей\n6. /recommend - Показать рекомендации к обороту данных и паролей\n7. /help - Показать возможности бота")
         await state.clear()
 
 # Обработчик сообщений в случае не прохождения проверки пользователя на нахождение в базе данных
@@ -117,6 +117,7 @@ async def clear_password_list(message: Message, state: FSMContext):
         f'UPDATE users SET password_1 = NULL, password_2 = NULL, password_3 = NULL, password_4 = NULL, password_5 = NULL WHERE id = ?',
         (user_id,))
     cursor.fetchone()
+    conn.commit()
     await message.answer("Ваш список паролей очищен!")
     await state.clear()
 
@@ -126,6 +127,7 @@ async def clear_enter_pass(message: Message, state: FSMContext):
     user_id = message.from_user.id
     cursor.execute(f'UPDATE users SET password_enter = NULL WHERE id = ?', (user_id,))
     cursor.fetchone()
+    conn.commit()
     await message.answer("Ваш enter_pass очищен!")
     await message.answer("Найдена пасхалка. А ты молодец!")
     await state.clear()
@@ -187,54 +189,17 @@ async def add_pass(message: Message, state: FSMContext):
     await message.answer(f"Пароль добавлен.")
     await state.clear()
 
-# Команда /delete
-@dp.message(Command("delete"))
-async def delete_pass_enter(message: Message, state: FSMContext):
-    await state.set_state(Password.delete_pass)
-    user_id = message.from_user.id
-    cursor.execute('INSERT OR IGNORE INTO users (id) VALUES (?)', (user_id,))
-    conn.commit()
-    await message.answer("Введите номер пароля, который хотите удалить (1-5):", reply_markup=clear_kb)
-
-# Обработчик команды /delete, обNULLяет значение заданного пароля
-@dp.message(Password.delete_pass)
-async def delete_pass(message: Message, state: FSMContext):
-    user_id = message.from_user.id
-    number = int(message.text)
-    cursor.execute('SELECT password_1, password_2, password_3, password_4, password_5 FROM users WHERE id = ?',
-                   (user_id,))
-    result_db = cursor.fetchone()
-    try:
-        cursor.execute(f'SELECT password_{number} FROM users WHERE id = ?', (user_id,))
-        check_num_of_pass = cursor.fetchone()[0]
-        if any in result_db is None:
-            await message.answer("У вас нет паролей, которые можно было бы удалить.")
-            await state.set_state(Password.delete_pass)
-            return
-        if not check_num_of_pass:
-            await message.answer(f"Пароль с номером {number} не существует! Попробуй снова.")
-            await state.set_state(Password.delete_pass)
-            return
-        elif 1 <= number <= 5:
-            cursor.execute(f'UPDATE users SET password_{number} = NULL WHERE id = ?', (user_id,))
-            conn.commit()
-            await message.answer(f"Пароль номер {number} удален.")
-            await state.clear()
-    except sqlite3.OperationalError:
-        await message.answer("Не существует такого номера пароля. Существуют номера 1-5.")
-        await state.set_state(Password.delete_pass)
-
 # Команда /generate_pass
 @dp.message(Command("generate_pass"))
 async def generate_pass(message: Message, state: FSMContext):
     await state.set_state(Password.generate)
-    await message.answer("Введите длину пароля (от 4 до 12):", reply_markup=clear_kb)
+    await message.answer("Введите желаемое количество символов в пароле (от 3 до 30):", reply_markup=clear_kb)
 
-# Обработчик команды /generate_pass, может генерировать числа от 4 до 12, условия создания можно изменить, на допустим 1-30 символов.
+# Обработчик команды /generate_pass, может генерировать числа от 3 до 30, условия создания можно изменить, на допустим 1-30 символов.
 @dp.message(Password.generate)
 async def generate_pass_length(message: Message, state: FSMContext):
     length_of_generated_pass = int(message.text)
-    if 4 <= length_of_generated_pass <= 12:
+    if 3 <= length_of_generated_pass <= 30:
         password_sym = ''.join(random.choice(chars) for _ in range(length_of_generated_pass))
         await message.answer(f"Вот ваш сгенерированный пароль: {password_sym}\nХотите добавить его в список паролей?",
                              reply_markup=ReplyKeyboardMarkup(
@@ -248,7 +213,7 @@ async def generate_pass_length(message: Message, state: FSMContext):
         await state.set_state(Password.set_pass)
         await state.update_data(name=password_sym)
     else:
-        await message.answer("Длина пароля должна быть от 4 до 12 символов. Попробуйте снова.")
+        await message.answer("Длина пароля должна быть от 3 до 30 символов. Попробуйте снова.")
         await state.clear()
 
 # Обработчик решения пользователя о добавлении в список его сгенерированного пароля.
@@ -274,7 +239,7 @@ async def add_generated_pass_2(message: Message, state: FSMContext):
         else:
             await message.answer("Ошибка: не удалось получить сгенерированный пароль.")
     else:
-        await message.answer("Ошибка: пароль не добавлен в список ваших паролей.")
+        await message.answer("Ошибка: пароль не будет добавлен в ваш список паролей.")
 
     await state.clear()
 
@@ -282,6 +247,7 @@ async def add_generated_pass_2(message: Message, state: FSMContext):
 @dp.message(Command("check_passwords"))
 async def verify_password(message: Message, state: FSMContext):
     user_id = message.from_user.id
+    conn.commit()
     cursor.execute("SELECT password_enter FROM users WHERE id = ?", (user_id,))
     result_verify_pass = cursor.fetchone()[0]
     if result_verify_pass == 'None':
@@ -307,11 +273,13 @@ async def view_passwords(message: Message, state: FSMContext):
             password_list = [f"Пароль {i + 1}: {pw}" for i, pw in enumerate(passwd) if pw is not None]
             if password_list:
                 await message.answer("\n".join(password_list))
+                conn.commit()
             else:
                 await message.answer("У вас нет сохраненных паролей.")
     else:
         await message.answer("Ошибка. Неверный пароль, попробуйте еще раз.")
         await state.set_state(Password.check_pass)
+    conn.commit()
 
 # Обработчик предыдущей команды, сообщение, введенное в этом блоке кода, будет являтся мастер-паролем в будущем
 @dp.message(Password.set_pass_2)
@@ -319,6 +287,43 @@ async def set_enter_pass(message: Message, state: FSMContext):
     user_id = message.from_user.id
     cursor.execute(f"UPDATE users SET password_enter = {message.text} WHERE id = ?", (user_id,))
     await state.clear()
+
+# Команда /delete
+@dp.message(Command("delete"))
+async def delete_pass_enter(message: Message, state: FSMContext):
+    await state.set_state(Password.delete_pass)
+    user_id = message.from_user.id
+    cursor.execute('INSERT OR IGNORE INTO users (id) VALUES (?)', (user_id,))
+    conn.commit()
+    await message.answer("Введите номер пароля, который хотите удалить (1-5):", reply_markup=clear_kb)
+
+# Обработчик команды /delete, обNULLяет значение заданного пароля
+@dp.message(Password.delete_pass)
+async def delete_pass(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    number = int(message.text)
+    cursor.execute('SELECT password_1, password_2, password_3, password_4, password_5 FROM users WHERE id = ?',
+                   (user_id,))
+    result_db = cursor.fetchone()
+    try:
+        cursor.execute(f'SELECT password_{number} FROM users WHERE id = ?', (user_id,))
+        check_num_of_pass = cursor.fetchone()[0]
+        if any in result_db is None:
+            await message.answer("У вас нет паролей, которые можно было бы удалить.")
+            await state.clear()
+            return
+        if not check_num_of_pass:
+            await message.answer(f"Пароль с номером {number} не существует! Попробуй снова.")
+            await state.set_state(Password.delete_pass)
+            return
+        elif 1 <= number <= 5:
+            cursor.execute(f'UPDATE users SET password_{number} = NULL WHERE id = ?', (user_id,))
+            conn.commit()
+            await message.answer(f"Пароль номер {number} удален.")
+            await state.clear()
+    except sqlite3.OperationalError:
+        await message.answer("Не существует такого номера пароля. Существуют номера 1-5.")
+        await state.set_state(Password.delete_pass)
 
 
 async def main() -> None:
